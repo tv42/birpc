@@ -1,0 +1,63 @@
+package jsonmsg
+
+import (
+	"encoding/json"
+	"github.com/tv42/birpc"
+	"io"
+)
+
+type codec struct {
+	dec    *json.Decoder
+	enc    *json.Encoder
+	closer io.Closer
+}
+
+// This is ugly, but i need to override the unmarshaling logic for
+// Args and Result, or they'll end up as map[string]interface{}.
+// Perhaps some day encoding/json will support embedded structs, and I
+// can embed birpc.Message and just override the two fields I need to
+// change.
+type jsonMessage struct {
+	ID     uint64          `json:"id,string,omitempty"`
+	Func   string          `json:"fn,omitempty"`
+	Args   json.RawMessage `json:"args,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *birpc.Error    `json:"error"`
+}
+
+func (c *codec) ReadMessage(msg *birpc.Message) error {
+	var jm jsonMessage
+	err := c.dec.Decode(&jm)
+	if err != nil {
+		return err
+	}
+	msg.ID = jm.ID
+	msg.Func = jm.Func
+	msg.Args = jm.Args
+	msg.Result = jm.Result
+	msg.Error = jm.Error
+	return nil
+}
+
+func (c *codec) WriteMessage(msg *birpc.Message) error {
+	return c.enc.Encode(msg)
+}
+
+func (c *codec) Close() error {
+	return c.closer.Close()
+}
+
+func (c *codec) UnmarshalArgs(msg *birpc.Message, args interface{}) error {
+	rawargs := msg.Args.(json.RawMessage)
+	err := json.Unmarshal(rawargs, args)
+	return err
+}
+
+func NewCodec(conn io.ReadWriteCloser) *codec {
+	c := &codec{
+		dec:    json.NewDecoder(conn),
+		enc:    json.NewEncoder(conn),
+		closer: conn,
+	}
+	return c
+}
