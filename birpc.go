@@ -18,6 +18,8 @@ package birpc
 import (
 	"fmt"
 	"io"
+	"log"
+	"net/rpc"
 	"reflect"
 	"sync"
 )
@@ -74,16 +76,6 @@ func (r *Registry) RegisterService(object interface{}) {
 	}
 }
 
-// Create a new endpoint that uses codec to talk to a peer. To
-// actually process messages, call endpoint.Serve; this is done so you
-// can capture errors.
-func (r *Registry) NewEndpoint(codec Codec) *Endpoint {
-	e := &Endpoint{}
-	e.codec = codec
-	e.server.registry = r
-	return e
-}
-
 func NewRegistry() *Registry {
 	r := &Registry{}
 	r.functions = make(map[string]*function)
@@ -95,6 +87,7 @@ type Codec interface {
 	WriteMessage(*Message) error
 
 	UnmarshalArgs(msg *Message, args interface{}) error
+	UnmarshalResult(msg *Message, result interface{}) error
 
 	io.Closer
 }
@@ -104,21 +97,92 @@ type Endpoint struct {
 	sending sync.Mutex
 
 	client struct {
-		// protects seq
-		mutex sync.Mutex
-		seq   uint64
+		// protects seq and pending
+		mutex   sync.Mutex
+		seq     uint64
+		pending map[uint64]*rpc.Call
 	}
 
 	server struct {
 		registry *Registry
+		running  sync.WaitGroup
 	}
+}
+
+// Dummy registry with no functions registered.
+var dummyRegistry = NewRegistry()
+
+// Create a new endpoint that uses codec to talk to a peer. To
+// actually process messages, call endpoint.Serve; this is done so you
+// can capture errors. Registry can be nil to serve no callables from
+// this peer.
+func NewEndpoint(codec Codec, registry *Registry) *Endpoint {
+	if registry == nil {
+		registry = dummyRegistry
+	}
+	e := &Endpoint{}
+	e.codec = codec
+	e.server.registry = registry
+	e.client.pending = make(map[uint64]*rpc.Call)
+	return e
+}
+
+func (e *Endpoint) serve_request(msg *Message) error {
+	e.server.registry.mu.RLock()
+	fn := e.server.registry.functions[msg.Func]
+	e.server.registry.mu.RUnlock()
+	if fn == nil {
+		msg.Error = &Error{Msg: "No such function."}
+		msg.Func = ""
+		msg.Args = nil
+		msg.Result = nil
+		err := e.send(msg)
+		if err != nil {
+			// well, we can't report the problem to the client...
+			return err
+		}
+		return nil
+	}
+
+	e.server.running.Add(1)
+	go func(fn *function, msg *Message) {
+		defer e.server.running.Done()
+		e.call(fn, msg)
+	}(fn, msg)
+	return nil
+}
+
+func (e *Endpoint) serve_response(msg *Message) error {
+	e.client.mutex.Lock()
+	call, found := e.client.pending[msg.ID]
+	delete(e.client.pending, msg.ID)
+	e.client.mutex.Unlock()
+
+	if !found {
+		return fmt.Errorf("Server responded with unknown seq %v", msg.ID)
+	}
+
+	if msg.Error == nil {
+		err := e.codec.UnmarshalResult(msg, call.Reply)
+		if err != nil {
+			call.Error = fmt.Errorf("Unmarshaling result: %v", err)
+		}
+	} else {
+		call.Error = rpc.ServerError(msg.Error.Msg)
+	}
+
+	// notify the caller, but never block
+	select {
+	case call.Done <- call:
+	default:
+	}
+
+	return nil
 }
 
 func (e *Endpoint) Serve() error {
 	defer e.codec.Close()
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
+	defer e.server.running.Wait()
 	for {
 		var msg Message
 		err := e.codec.ReadMessage(&msg)
@@ -126,27 +190,14 @@ func (e *Endpoint) Serve() error {
 			return err
 		}
 
-		e.server.registry.mu.RLock()
-		fn := e.server.registry.functions[msg.Func]
-		e.server.registry.mu.RUnlock()
-		if fn == nil {
-			msg.Error = &Error{Msg: "No such function."}
-			msg.Func = ""
-			msg.Args = nil
-			msg.Result = nil
-			err = e.send(&msg)
-			if err != nil {
-				// well, we can't report the problem to the client...
-				return err
-			}
-			continue
+		if msg.Func != "" {
+			err = e.serve_request(&msg)
+		} else {
+			err = e.serve_response(&msg)
 		}
-
-		wg.Add(1)
-		go func(fn *function, msg *Message) {
-			defer wg.Done()
-			e.call(fn, msg)
-		}(fn, &msg)
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -200,4 +251,42 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 		e.codec.Close()
 		return
 	}
+}
+
+// See net/rpc Client.Go
+func (e *Endpoint) Go(function string, args interface{}, reply interface{}, done chan *rpc.Call) *rpc.Call {
+	call := &rpc.Call{}
+	call.ServiceMethod = function
+	call.Args = args
+	call.Reply = reply
+	if done == nil {
+		done = make(chan *rpc.Call, 10)
+	} else {
+		if cap(done) == 0 {
+			log.Panic("birpc: done channel is unbuffered")
+		}
+	}
+	call.Done = done
+
+	msg := &Message{
+		Func: function,
+		Args: args,
+	}
+
+	e.client.mutex.Lock()
+	e.client.seq++
+	msg.ID = e.client.seq
+	e.client.pending[msg.ID] = call
+	e.client.mutex.Unlock()
+
+	// put sending in a goroutine so a malicious client that
+	// refuses to read cannot ever make a .Go call block
+	go e.send(msg)
+	return call
+}
+
+// See net/rpc Client.Call
+func (e *Endpoint) Call(function string, args interface{}, reply interface{}) error {
+	call := <-e.Go(function, args, reply, make(chan *rpc.Call, 1)).Done
+	return call.Error
 }

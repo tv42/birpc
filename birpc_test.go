@@ -42,10 +42,10 @@ func TestServerSimple(t *testing.T) {
 	c, s := net.Pipe()
 	defer c.Close()
 	registry := makeRegistry()
-	server := registry.NewEndpoint(jsonmsg.NewCodec(s))
-	ch := make(chan error)
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
 	go func() {
-		ch <- server.Serve()
+		server_err <- server.Serve()
 	}()
 
 	io.WriteString(c, PALINDROME)
@@ -65,8 +65,48 @@ func TestServerSimple(t *testing.T) {
 
 	c.Close()
 
-	err := <-ch
+	err := <-server_err
 	if err != io.EOF {
 		t.Fatalf("unexpected error from ServeCodec: %v", err)
+	}
+}
+
+func TestClient(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := makeRegistry()
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	client := birpc.NewEndpoint(jsonmsg.NewCodec(c), nil)
+	client_err := make(chan error)
+	go func() {
+		client_err <- client.Serve()
+	}()
+
+	// Synchronous calls
+	args := &Request{"xyzzy"}
+	reply := &Reply{}
+	err := client.Call("WordLength.Len", args, reply)
+	if err != nil {
+		t.Errorf("unexpected error from call: %v", err.Error())
+	}
+	if reply.Length != 5 {
+		t.Fatalf("got wrong answer: %v", reply.Length)
+	}
+
+	c.Close()
+
+	err = <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from peer ServeCodec: %v", err)
+	}
+
+	err = <-client_err
+	if err != io.ErrClosedPipe {
+		t.Fatalf("unexpected error from local ServeCodec: %v", err)
 	}
 }

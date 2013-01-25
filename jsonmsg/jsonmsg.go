@@ -48,8 +48,14 @@ func (c *codec) Close() error {
 }
 
 func (c *codec) UnmarshalArgs(msg *birpc.Message, args interface{}) error {
-	rawargs := msg.Args.(json.RawMessage)
-	err := json.Unmarshal(rawargs, args)
+	raw := msg.Args.(json.RawMessage)
+	err := json.Unmarshal(raw, args)
+	return err
+}
+
+func (c *codec) UnmarshalResult(msg *birpc.Message, result interface{}) error {
+	raw := msg.Result.(json.RawMessage)
+	err := json.Unmarshal(raw, result)
 	return err
 }
 
