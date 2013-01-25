@@ -29,12 +29,10 @@ type function struct {
 	reply    reflect.Type
 }
 
-type Endpoint struct {
-	server struct {
-		// protects services
-		mu        sync.RWMutex
-		functions map[string]*function
-	}
+type Registry struct {
+	// protects services
+	mu        sync.RWMutex
+	functions map[string]*function
 }
 
 func getRPCMethodsOfType(object interface{}) []*function {
@@ -59,7 +57,7 @@ func getRPCMethodsOfType(object interface{}) []*function {
 	return fns
 }
 
-func (e *Endpoint) RegisterService(object interface{}) {
+func (r *Registry) RegisterService(object interface{}) {
 	methods := getRPCMethodsOfType(object)
 	if len(methods) == 0 {
 		panic(fmt.Sprintf("birpc.RegisterService: type %T has no exported methods of suitable type", object))
@@ -67,19 +65,29 @@ func (e *Endpoint) RegisterService(object interface{}) {
 
 	serviceName := reflect.Indirect(reflect.ValueOf(object)).Type().Name()
 
-	e.server.mu.Lock()
-	defer e.server.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	for _, fn := range methods {
 		name := serviceName + "." + fn.method.Name
-		e.server.functions[name] = fn
+		r.functions[name] = fn
 	}
 }
 
-func New() *Endpoint {
+// Create a new endpoint that uses codec to talk to a peer. To
+// actually process messages, call endpoint.Serve; this is done so you
+// can capture errors.
+func (r *Registry) NewEndpoint(codec Codec) *Endpoint {
 	e := &Endpoint{}
-	e.server.functions = make(map[string]*function)
+	e.codec = codec
+	e.server.registry = r
 	return e
+}
+
+func NewRegistry() *Registry {
+	r := &Registry{}
+	r.functions = make(map[string]*function)
+	return r
 }
 
 type Codec interface {
@@ -89,6 +97,57 @@ type Codec interface {
 	UnmarshalArgs(msg *Message, args interface{}) error
 
 	io.Closer
+}
+
+type Endpoint struct {
+	codec   Codec
+	sending sync.Mutex
+
+	client struct {
+		// protects seq
+		mutex sync.Mutex
+		seq   uint64
+	}
+
+	server struct {
+		registry *Registry
+	}
+}
+
+func (e *Endpoint) Serve() error {
+	defer e.codec.Close()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	for {
+		var msg Message
+		err := e.codec.ReadMessage(&msg)
+		if err != nil {
+			return err
+		}
+
+		e.server.registry.mu.RLock()
+		fn := e.server.registry.functions[msg.Func]
+		e.server.registry.mu.RUnlock()
+		if fn == nil {
+			msg.Error = &Error{Msg: "No such function."}
+			msg.Func = ""
+			msg.Args = nil
+			msg.Result = nil
+			err = send(e.codec, &e.sending, &msg)
+			if err != nil {
+				// well, we can't report the problem to the client...
+				return err
+			}
+			continue
+		}
+
+		wg.Add(1)
+		go func(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
+			defer wg.Done()
+			call(fn, codec, sending, msg)
+		}(fn, e.codec, &e.sending, &msg)
+	}
 }
 
 func send(codec Codec, sending *sync.Mutex, msg *Message) error {
@@ -140,42 +199,5 @@ func call(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
 		// well, we can't report the problem to the client...
 		codec.Close()
 		return
-	}
-}
-
-func (e *Endpoint) ServeCodec(codec Codec) error {
-	defer codec.Close()
-
-	sending := new(sync.Mutex)
-	var wg sync.WaitGroup
-	defer wg.Wait()
-	for {
-		var msg Message
-		err := codec.ReadMessage(&msg)
-		if err != nil {
-			return err
-		}
-
-		e.server.mu.RLock()
-		fn := e.server.functions[msg.Func]
-		e.server.mu.RUnlock()
-		if fn == nil {
-			msg.Error = &Error{Msg: "No such function."}
-			msg.Func = ""
-			msg.Args = nil
-			msg.Result = nil
-			err = send(codec, sending, &msg)
-			if err != nil {
-				// well, we can't report the problem to the client...
-				return err
-			}
-			continue
-		}
-
-		wg.Add(1)
-		go func(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
-			defer wg.Done()
-			call(fn, codec, sending, msg)
-		}(fn, codec, sending, &msg)
 	}
 }

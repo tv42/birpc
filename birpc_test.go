@@ -30,10 +30,10 @@ func (_ WordLength) Len(request *Request, reply *Reply) error {
 	return nil
 }
 
-func makeServer() *birpc.Endpoint {
-	s := birpc.New()
-	s.RegisterService(WordLength{})
-	return s
+func makeRegistry() *birpc.Registry {
+	r := birpc.NewRegistry()
+	r.RegisterService(WordLength{})
+	return r
 }
 
 const PALINDROME = `{"id": "42", "fn": "WordLength.Len", "args": {"Word": "saippuakauppias"}}` + "\n"
@@ -41,10 +41,11 @@ const PALINDROME = `{"id": "42", "fn": "WordLength.Len", "args": {"Word": "saipp
 func TestServerSimple(t *testing.T) {
 	c, s := net.Pipe()
 	defer c.Close()
-	server := makeServer()
+	registry := makeRegistry()
+	server := registry.NewEndpoint(jsonmsg.NewCodec(s))
 	ch := make(chan error)
 	go func() {
-		ch <- server.ServeCodec(jsonmsg.NewCodec(s))
+		ch <- server.Serve()
 	}()
 
 	io.WriteString(c, PALINDROME)
