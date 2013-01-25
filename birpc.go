@@ -134,7 +134,7 @@ func (e *Endpoint) Serve() error {
 			msg.Func = ""
 			msg.Args = nil
 			msg.Result = nil
-			err = send(e.codec, &e.sending, &msg)
+			err = e.send(&msg)
 			if err != nil {
 				// well, we can't report the problem to the client...
 				return err
@@ -143,31 +143,31 @@ func (e *Endpoint) Serve() error {
 		}
 
 		wg.Add(1)
-		go func(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
+		go func(fn *function, msg *Message) {
 			defer wg.Done()
-			call(fn, codec, sending, msg)
-		}(fn, e.codec, &e.sending, &msg)
+			e.call(fn, msg)
+		}(fn, &msg)
 	}
 }
 
-func send(codec Codec, sending *sync.Mutex, msg *Message) error {
-	sending.Lock()
-	defer sending.Unlock()
-	return codec.WriteMessage(msg)
+func (e *Endpoint) send(msg *Message) error {
+	e.sending.Lock()
+	defer e.sending.Unlock()
+	return e.codec.WriteMessage(msg)
 }
 
-func call(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
+func (e *Endpoint) call(fn *function, msg *Message) {
 	args := reflect.New(fn.args)
-	err := codec.UnmarshalArgs(msg, args.Interface())
+	err := e.codec.UnmarshalArgs(msg, args.Interface())
 	if err != nil {
 		msg.Error = &Error{Msg: err.Error()}
 		msg.Func = ""
 		msg.Args = nil
 		msg.Result = nil
-		err = send(codec, sending, msg)
+		err = e.send(msg)
 		if err != nil {
 			// well, we can't report the problem to the client...
-			codec.Close()
+			e.codec.Close()
 			return
 		}
 	}
@@ -181,10 +181,10 @@ func call(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
 		msg.Func = ""
 		msg.Args = nil
 		msg.Result = nil
-		err = send(codec, sending, msg)
+		err = e.send(msg)
 		if err != nil {
 			// well, we can't report the problem to the client...
-			codec.Close()
+			e.codec.Close()
 			return
 		}
 	}
@@ -194,10 +194,10 @@ func call(fn *function, codec Codec, sending *sync.Mutex, msg *Message) {
 	msg.Args = nil
 	msg.Result = reply.Interface()
 
-	err = send(codec, sending, msg)
+	err = e.send(msg)
 	if err != nil {
 		// well, we can't report the problem to the client...
-		codec.Close()
+		e.codec.Close()
 		return
 	}
 }
