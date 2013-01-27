@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd -- "$(dirname -- "$0")"
+
 declare -a ASSETS=(chat.html chat.js chat.css)
 
 for asset in "${ASSETS[@]}"; do
