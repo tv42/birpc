@@ -84,6 +84,9 @@ func NewRegistry() *Registry {
 
 type Codec interface {
 	ReadMessage(*Message) error
+
+	// WriteMessage may be called concurrently. Codecs need to
+	// protect themselves.
 	WriteMessage(*Message) error
 
 	UnmarshalArgs(msg *Message, args interface{}) error
@@ -93,8 +96,7 @@ type Codec interface {
 }
 
 type Endpoint struct {
-	codec   Codec
-	sending sync.Mutex
+	codec Codec
 
 	client struct {
 		// protects seq and pending
@@ -202,8 +204,6 @@ func (e *Endpoint) Serve() error {
 }
 
 func (e *Endpoint) send(msg *Message) error {
-	e.sending.Lock()
-	defer e.sending.Unlock()
 	return e.codec.WriteMessage(msg)
 }
 

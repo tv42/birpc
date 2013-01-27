@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"github.com/tv42/birpc"
 	"io"
+	"sync"
 )
 
 type codec struct {
-	dec    *json.Decoder
-	enc    *json.Encoder
-	closer io.Closer
+	dec     *json.Decoder
+	sending sync.Mutex
+	enc     *json.Encoder
+	closer  io.Closer
 }
 
 // This is ugly, but i need to override the unmarshaling logic for
@@ -40,6 +42,8 @@ func (c *codec) ReadMessage(msg *birpc.Message) error {
 }
 
 func (c *codec) WriteMessage(msg *birpc.Message) error {
+	c.sending.Lock()
+	defer c.sending.Unlock()
 	return c.enc.Encode(msg)
 }
 
