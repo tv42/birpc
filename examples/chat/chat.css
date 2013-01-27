@@ -1,0 +1,31 @@
+#msg {
+    border: 1px solid gray;
+    padding: 0.5em;
+    max-height: 80%;
+}
+
+#msg p {
+    margin: 0.1em;
+}
+
+#msg span {
+    margin-right: 0.5em;
+}
+
+#msg .time {
+    font-family: monospace;
+    font-size: 80%;
+    color: #404040;
+    float: right;
+}
+
+#msg .from {
+    color: blue;
+}
+
+#msg .from:after {
+    content: ":";
+}
+
+#msg .message {
+}
