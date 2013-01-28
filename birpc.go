@@ -95,6 +95,10 @@ type Codec interface {
 	io.Closer
 }
 
+type FillArgser interface {
+	FillArgs([]reflect.Value) error
+}
+
 type Endpoint struct {
 	codec Codec
 
@@ -224,7 +228,35 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 	}
 	reply := reflect.New(fn.reply)
 
-	retval := fn.method.Func.Call([]reflect.Value{fn.receiver, args, reply})
+	num_args := fn.method.Type.NumIn()
+	arglist := make([]reflect.Value, num_args, num_args)
+
+	arglist[0] = fn.receiver
+	arglist[1] = args
+	arglist[2] = reply
+
+	if num_args > 3 {
+		for i := 3; i < num_args; i++ {
+			arglist[i] = reflect.Zero(fn.method.Type.In(i))
+		}
+		if filler, ok := e.codec.(FillArgser); ok {
+			err = filler.FillArgs(arglist[3:])
+			if err != nil {
+				msg.Error = &Error{Msg: err.Error()}
+				msg.Func = ""
+				msg.Args = nil
+				msg.Result = nil
+				err = e.send(msg)
+				if err != nil {
+					// well, we can't report the problem to the client...
+					e.codec.Close()
+					return
+				}
+			}
+		}
+	}
+
+	retval := fn.method.Func.Call(arglist)
 	erri := retval[0].Interface()
 	if erri != nil {
 		err := erri.(error)

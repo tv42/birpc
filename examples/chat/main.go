@@ -75,8 +75,8 @@ func isErrClosing(err error) bool {
 
 type nothing struct{}
 
-func (c *Chat) Message(msg *Incoming, _ *nothing) error {
-	log.Printf("recv:%#v\n", msg)
+func (c *Chat) Message(msg *Incoming, _ *nothing, ws *websocket.Conn) error {
+	log.Printf("recv from %v:%#v\n", ws.Request().RemoteAddr, msg)
 
 	c.broadcast.Broadcast <- Outgoing{
 		Time:    time.Now(),

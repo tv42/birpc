@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"github.com/tv42/birpc"
+	"reflect"
 )
 
 type codec struct {
@@ -55,6 +56,16 @@ func (c *codec) UnmarshalResult(msg *birpc.Message, result interface{}) error {
 	raw := msg.Result.(json.RawMessage)
 	err := json.Unmarshal(raw, result)
 	return err
+}
+
+func (c *codec) FillArgs(arglist []reflect.Value) error {
+	for i := 0; i < len(arglist); i++ {
+		switch arglist[i].Interface().(type) {
+		case *websocket.Conn:
+			arglist[i] = reflect.ValueOf(c.WS)
+		}
+	}
+	return nil
 }
 
 // TODO don't need a struct, or this function, just a type alias
