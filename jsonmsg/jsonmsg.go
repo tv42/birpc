@@ -24,7 +24,7 @@ type jsonMessage struct {
 	Func   string          `json:"fn,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`
-	Error  *birpc.Error    `json:"error"`
+	Error  *birpc.Error    `json:"error,omitempty"`
 }
 
 func (c *codec) ReadMessage(msg *birpc.Message) error {
