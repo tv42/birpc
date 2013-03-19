@@ -25,7 +25,7 @@ type Message struct {
 
 	// Information on how the call failed. Only valid for a
 	// response. Must be present if Result is omitted.
-	Error *Error `json:"error"`
+	Error *Error `json:"error,omitempty"`
 }
 
 type Error struct {
