@@ -110,3 +110,60 @@ func TestClient(t *testing.T) {
 		t.Fatalf("unexpected error from local ServeCodec: %v", err)
 	}
 }
+
+type EndpointPeer struct {
+	seen *birpc.Endpoint
+}
+
+type nothing struct{}
+
+func (e *EndpointPeer) Poke(request *nothing, reply *nothing, endpoint *birpc.Endpoint) error {
+	if e.seen != nil {
+		panic("poke called twice")
+	}
+	e.seen = endpoint
+	return nil
+}
+
+type EndpointPeer_LowLevelReply struct {
+	Id     uint64          `json:"id,string"`
+	Result json.RawMessage `json:"result"`
+	Error  *birpc.Error    `json:"error"`
+}
+
+func TestServerEndpointArg(t *testing.T) {
+	peer := &EndpointPeer{}
+	registry := birpc.NewRegistry()
+	registry.RegisterService(peer)
+
+	c, s := net.Pipe()
+	defer c.Close()
+
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	io.WriteString(c, `{"id":"42","fn":"EndpointPeer.Poke","args":{}}`)
+
+	var reply EndpointPeer_LowLevelReply
+	dec := json.NewDecoder(c)
+	if err := dec.Decode(&reply); err != nil && err != io.EOF {
+		t.Fatalf("decode failed: %s", err)
+	}
+	t.Logf("reply msg: %#v", reply)
+	if reply.Error != nil {
+		t.Fatalf("unexpected error response: %v", reply.Error)
+	}
+	c.Close()
+
+	err := <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from ServeCodec: %v", err)
+	}
+
+	if peer.seen == nil {
+		t.Fatalf("peer never saw a birpc.Endpoint")
+	}
+}
