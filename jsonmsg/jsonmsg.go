@@ -2,6 +2,7 @@ package jsonmsg
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/tv42/birpc"
 	"io"
 	"sync"
@@ -62,6 +63,9 @@ func (c *codec) UnmarshalArgs(msg *birpc.Message, args interface{}) error {
 
 func (c *codec) UnmarshalResult(msg *birpc.Message, result interface{}) error {
 	raw := msg.Result.(json.RawMessage)
+	if raw == nil {
+		return errors.New("birpc.jsonmsg response must set result")
+	}
 	err := json.Unmarshal(raw, result)
 	return err
 }
