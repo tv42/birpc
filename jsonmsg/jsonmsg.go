@@ -53,6 +53,9 @@ func (c *codec) Close() error {
 
 func (c *codec) UnmarshalArgs(msg *birpc.Message, args interface{}) error {
 	raw := msg.Args.(json.RawMessage)
+	if raw == nil {
+		return nil
+	}
 	err := json.Unmarshal(raw, args)
 	return err
 }
