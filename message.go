@@ -1,5 +1,9 @@
 package birpc
 
+import (
+	"fmt"
+)
+
 // Examples:
 //
 //   {"id":"1","method":"Arith.Add","args":{"A":1,"B":1}}
@@ -39,4 +43,8 @@ type Error struct {
 
 func (e Error) Error() string {
 	return e.Msg
+}
+
+func (e Error) GoString() string {
+	return fmt.Sprintf("%T{Msg: %q}", e, e.Msg)
 }
