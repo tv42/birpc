@@ -4,9 +4,11 @@ import (
 	"fmt"
 )
 
+// Message is the on-wire description of a method call or result.
+//
 // Examples:
 //
-//   {"id":"1","method":"Arith.Add","args":{"A":1,"B":1}}
+//   {"id":"1","fn":"Arith.Add","args":{"A":1,"B":1}}
 //   {"id":"1","result":{"C":2}}
 //
 // or
@@ -32,6 +34,8 @@ type Message struct {
 	Error *Error `json:"error,omitempty"`
 }
 
+// Error is the on-wire description of an error that occurred while
+// serving the method call.
 type Error struct {
 	Msg string `json:"msg,omitempty"`
 

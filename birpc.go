@@ -31,6 +31,12 @@ type function struct {
 	reply    reflect.Type
 }
 
+// Registry is a collection of services have methods that can be called remotely.
+// Each method has a name in the format SERVICE.METHOD.
+//
+// A single Registry is intended to be used with multiple Endpoints.
+// This separation exists as registering services can be a slow
+// operation.
 type Registry struct {
 	// protects services
 	mu        sync.RWMutex
@@ -59,6 +65,21 @@ func getRPCMethodsOfType(object interface{}) []*function {
 	return fns
 }
 
+// RegisterService registers all exported methods of service, allowing
+// them to be called remotely. The name of the methods will be of the
+// format SERVICE.METHOD, where SERVICE is the type name or the object
+// passed in, and METHOD is the name of each method.
+//
+// The methods are expect to have at least two arguments, referred to
+// as args and reply. Reply should be a pointer type, and the method
+// should fill it with the result. The types used are limited only by
+// the codec needing to be able to marshal them for transport. For
+// example, for wetsock the args and reply must marshal to JSON.
+//
+// Rest of the arguments are filled on best-effort basis, if their
+// types are known to birpc and the codec in use.
+//
+// The methods should have return type error.
 func (r *Registry) RegisterService(object interface{}) {
 	methods := getRPCMethodsOfType(object)
 	if len(methods) == 0 {
@@ -76,12 +97,15 @@ func (r *Registry) RegisterService(object interface{}) {
 	}
 }
 
+// NewRegistry creates a new Registry.
 func NewRegistry() *Registry {
 	r := &Registry{}
 	r.functions = make(map[string]*function)
 	return r
 }
 
+// A Codec reads messages from the peer, and writes messages to the
+// peer.
 type Codec interface {
 	ReadMessage(*Message) error
 
@@ -95,10 +119,20 @@ type Codec interface {
 	io.Closer
 }
 
+// FillArgser is an optional interface that a Codec may implement, in
+// order to provide extra information to the RPC methods.
+//
+// The Codec should loop over the values, and fill whatever types it
+// recognizes.
+//
+// A typical use would be allowing the RPC method to see the
+// underlying connection, to retrieve the IP address of the peer.
 type FillArgser interface {
 	FillArgs([]reflect.Value) error
 }
 
+// Endpoint manages the state for one connection (via a Codec) and the
+// pending calls on it, both incoming and outgoing.
 type Endpoint struct {
 	codec Codec
 
@@ -118,10 +152,10 @@ type Endpoint struct {
 // Dummy registry with no functions registered.
 var dummyRegistry = NewRegistry()
 
-// Create a new endpoint that uses codec to talk to a peer. To
-// actually process messages, call endpoint.Serve; this is done so you
-// can capture errors. Registry can be nil to serve no callables from
-// this peer.
+// NewEndpoint creates a new endpoint that uses codec to talk to a
+// peer. To actually process messages, call endpoint.Serve; this is
+// done so you can capture errors. Registry can be nil to serve no
+// callables from this peer.
 func NewEndpoint(codec Codec, registry *Registry) *Endpoint {
 	if registry == nil {
 		registry = dummyRegistry
@@ -186,6 +220,8 @@ func (e *Endpoint) serve_response(msg *Message) error {
 	return nil
 }
 
+// Serve messages from this connection. Serve blocks, serving the
+// connection until the client disconnects, or there is an error.
 func (e *Endpoint) Serve() error {
 	defer e.codec.Close()
 	defer e.server.running.Wait()
@@ -311,7 +347,7 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 	}
 }
 
-// See net/rpc Client.Go
+// Go invokes the function asynchronously. See net/rpc Client.Go.
 func (e *Endpoint) Go(function string, args interface{}, reply interface{}, done chan *rpc.Call) *rpc.Call {
 	call := &rpc.Call{}
 	call.ServiceMethod = function
@@ -343,7 +379,8 @@ func (e *Endpoint) Go(function string, args interface{}, reply interface{}, done
 	return call
 }
 
-// See net/rpc Client.Call
+// Call invokes the named function, waits for it to complete, and
+// returns its error status. See net/rpc Client.Call
 func (e *Endpoint) Call(function string, args interface{}, reply interface{}) error {
 	call := <-e.Go(function, args, reply, make(chan *rpc.Call, 1)).Done
 	return call.Error
