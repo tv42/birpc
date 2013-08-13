@@ -3,7 +3,7 @@
 // and server peers, allowing each to call methods on the other.
 //
 // Any transport can be used, by providing a suitable Codec.
-// Pre-existing codecs exist for:
+// Codecs are provided for:
 //
 //   - wetsock: JSON over WebSocket (over HTTP(S))
 //   - jsonmsg: JSON over any io.ReadWriteCloser (for example, a TCP connection)
