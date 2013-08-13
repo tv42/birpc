@@ -2,7 +2,7 @@ Bi-directional RPC library for Go, including JSON-over-WebSocket
 ================================================================
 
 Go library for RPC where the endpoints are peers that can both call
-methods on the other party. This, in combination wit the included
+methods on the other party. This, in combination with the included
 `wetsock` library, allows writing interactive web applications that
 get live notifications from the server, using JSON over WebSocket.
 
