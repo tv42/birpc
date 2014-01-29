@@ -203,9 +203,11 @@ func (e *Endpoint) serve_response(msg *Message) error {
 	}
 
 	if msg.Error == nil {
-		err := e.codec.UnmarshalResult(msg, call.Reply)
-		if err != nil {
-			call.Error = fmt.Errorf("Unmarshaling result: %v", err)
+		if call.Reply != nil {
+			err := e.codec.UnmarshalResult(msg, call.Reply)
+			if err != nil {
+				call.Error = fmt.Errorf("Unmarshaling result: %v", err)
+			}
 		}
 	} else {
 		call.Error = rpc.ServerError(msg.Error.Msg)

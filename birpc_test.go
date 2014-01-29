@@ -111,6 +111,42 @@ func TestClient(t *testing.T) {
 	}
 }
 
+func TestClientNilResult(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := makeRegistry()
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	client := birpc.NewEndpoint(jsonmsg.NewCodec(c), nil)
+	client_err := make(chan error)
+	go func() {
+		client_err <- client.Serve()
+	}()
+
+	// Synchronous calls
+	args := &Request{"xyzzy"}
+	err := client.Call("WordLength.Len", args, nil)
+	if err != nil {
+		t.Errorf("unexpected error from call: %v", err.Error())
+	}
+
+	c.Close()
+
+	err = <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from peer ServeCodec: %v", err)
+	}
+
+	err = <-client_err
+	if err != io.ErrClosedPipe {
+		t.Fatalf("unexpected error from local ServeCodec: %v", err)
+	}
+}
+
 type EndpointPeer struct {
 	seen *birpc.Endpoint
 }
