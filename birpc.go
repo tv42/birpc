@@ -51,6 +51,10 @@ func getRPCMethodsOfType(object interface{}) []*function {
 	for i := 0; i < type_.NumMethod(); i++ {
 		method := type_.Method(i)
 
+		if method.PkgPath != "" {
+			// skip unexported method
+			continue
+		}
 		// TODO verify more
 
 		fn := &function{

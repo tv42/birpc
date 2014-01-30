@@ -30,6 +30,11 @@ func (_ WordLength) Len(request *Request, reply *Reply) error {
 	return nil
 }
 
+// this is here only to trigger a bug where all methods are thought to
+// be rpc methods
+func (_ WordLength) redHerring() {
+}
+
 func makeRegistry() *birpc.Registry {
 	r := birpc.NewRegistry()
 	r.RegisterService(WordLength{})
