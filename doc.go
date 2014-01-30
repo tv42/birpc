@@ -16,7 +16,7 @@
 // The RPC methods registered may take extra arguments, in addition
 // to the usual request and response. These will be filled by birpc
 // and the codec (see FillArgser), when possible. The following are
-// types will be filled:
+// some of the types that will be filled:
 //
 //   - *birpc.Endpoint: the Endpoint this method call was received on
 //   - *websocket.Conn (as in go.net/websocket): the WebSocket this
