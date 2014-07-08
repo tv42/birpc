@@ -324,25 +324,17 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 		}
 	}
 
+	msg.Func = ""
+	msg.Args = nil
+	msg.Error = nil
+
 	retval := fn.method.Func.Call(arglist)
 	erri := retval[0].Interface()
 	if erri != nil {
 		err := erri.(error)
 		msg.Error = &Error{Msg: err.Error()}
-		msg.Func = ""
-		msg.Args = nil
-		msg.Result = nil
-		err = e.send(msg)
-		if err != nil {
-			// well, we can't report the problem to the client...
-			e.codec.Close()
-			return
-		}
 	}
 
-	msg.Error = nil
-	msg.Func = ""
-	msg.Args = nil
 	msg.Result = reply.Interface()
 
 	err = e.send(msg)
