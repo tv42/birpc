@@ -1,11 +1,11 @@
 package wetsock_test
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"fmt"
 	"github.com/tv42/birpc"
 	"github.com/tv42/birpc/oneshotlisten"
 	"github.com/tv42/birpc/wetsock"
+	"golang.org/x/net/websocket"
 	"io"
 	"log"
 	"net"

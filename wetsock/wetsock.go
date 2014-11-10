@@ -1,10 +1,10 @@
 package wetsock
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"errors"
 	"github.com/tv42/birpc"
+	"golang.org/x/net/websocket"
 	"reflect"
 )
 

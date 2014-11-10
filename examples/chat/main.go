@@ -1,12 +1,12 @@
 package main
 
 import (
-	"code.google.com/p/go.net/websocket"
 	"flag"
 	"fmt"
 	"github.com/tv42/birpc"
 	"github.com/tv42/birpc/wetsock"
 	"github.com/tv42/topic"
+	"golang.org/x/net/websocket"
 	"html/template"
 	"log"
 	"net"
