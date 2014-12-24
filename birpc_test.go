@@ -2,6 +2,7 @@ package birpc_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -207,5 +208,55 @@ func TestServerEndpointArg(t *testing.T) {
 
 	if peer.seen == nil {
 		t.Fatalf("peer never saw a birpc.Endpoint")
+	}
+}
+
+type Failing struct{}
+
+func (_ Failing) Fail(request *nothing, reply *nothing) error {
+	return errors.New("intentional")
+}
+
+type LowLevelFailingMsg struct {
+	Id     uint64           `json:"id,string"`
+	Result *json.RawMessage `json:"result"`
+	Error  *birpc.Error     `json:"error"`
+}
+
+func TestServerError(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := birpc.NewRegistry()
+	registry.RegisterService(Failing{})
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	const REQ = `{"id": "42", "fn": "Failing.Fail", "args": {}}` + "\n"
+	io.WriteString(c, REQ)
+
+	var reply LowLevelFailingMsg
+	dec := json.NewDecoder(c)
+	if err := dec.Decode(&reply); err != nil && err != io.EOF {
+		t.Fatalf("decode failed: %s", err)
+	}
+	t.Logf("reply msg: %#v", reply)
+	if reply.Error == nil {
+		t.Fatalf("expected an error")
+	}
+	if g, e := reply.Error.Msg, "intentional"; g != e {
+		t.Fatalf("unexpected error response: %q != %q", g, e)
+	}
+	if reply.Result != nil {
+		t.Fatalf("got unexpected result: %v", reply.Result)
+	}
+
+	c.Close()
+
+	err := <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from ServeCodec: %v", err)
 	}
 }
