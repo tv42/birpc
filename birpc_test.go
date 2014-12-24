@@ -10,23 +10,23 @@ import (
 	"github.com/tv42/birpc/jsonmsg"
 )
 
-type Request struct {
+type WordLengthRequest struct {
 	Word string
 }
 
-type Reply struct {
+type WordLengthReply struct {
 	Length int
 }
 
-type LowLevelReply struct {
-	Id     uint64       `json:"id,string"`
-	Result Reply        `json:"result"`
-	Error  *birpc.Error `json:"error"`
+type WordLength_LowLevelReply struct {
+	Id     uint64          `json:"id,string"`
+	Result WordLengthReply `json:"result"`
+	Error  *birpc.Error    `json:"error"`
 }
 
 type WordLength struct{}
 
-func (_ WordLength) Len(request *Request, reply *Reply) error {
+func (_ WordLength) Len(request *WordLengthRequest, reply *WordLengthReply) error {
 	reply.Length = len(request.Word)
 	return nil
 }
@@ -56,7 +56,7 @@ func TestServerSimple(t *testing.T) {
 
 	io.WriteString(c, PALINDROME)
 
-	var reply LowLevelReply
+	var reply WordLength_LowLevelReply
 	dec := json.NewDecoder(c)
 	if err := dec.Decode(&reply); err != nil && err != io.EOF {
 		t.Fatalf("decode failed: %s", err)
@@ -94,8 +94,8 @@ func TestClient(t *testing.T) {
 	}()
 
 	// Synchronous calls
-	args := &Request{"xyzzy"}
-	reply := &Reply{}
+	args := &WordLengthRequest{"xyzzy"}
+	reply := &WordLengthReply{}
 	err := client.Call("WordLength.Len", args, reply)
 	if err != nil {
 		t.Errorf("unexpected error from call: %v", err.Error())
@@ -134,7 +134,7 @@ func TestClientNilResult(t *testing.T) {
 	}()
 
 	// Synchronous calls
-	args := &Request{"xyzzy"}
+	args := &WordLengthRequest{"xyzzy"}
 	err := client.Call("WordLength.Len", args, nil)
 	if err != nil {
 		t.Errorf("unexpected error from call: %v", err.Error())
