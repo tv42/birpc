@@ -43,7 +43,7 @@ type Registry struct {
 	functions map[string]*function
 }
 
-func getRPCMethodsOfType(object interface{}) []*function {
+func getRPCMethodsOfType(object interface{}) ([]*function, error) {
 	var fns []*function
 
 	type_ := reflect.TypeOf(object)
@@ -54,6 +54,9 @@ func getRPCMethodsOfType(object interface{}) []*function {
 		if method.PkgPath != "" {
 			// skip unexported method
 			continue
+		}
+		if method.Type.NumIn() < 3 {
+			return nil, fmt.Errorf("birpc.RegisterService: method %T.%s is missing request/reply arguments", object, method.Name)
 		}
 		// TODO verify more
 
@@ -66,7 +69,10 @@ func getRPCMethodsOfType(object interface{}) []*function {
 		fns = append(fns, fn)
 	}
 
-	return fns
+	if len(fns) == 0 {
+		return nil, fmt.Errorf("birpc.RegisterService: type %T has no exported methods of suitable type", object)
+	}
+	return fns, nil
 }
 
 // RegisterService registers all exported methods of service, allowing
@@ -85,9 +91,10 @@ func getRPCMethodsOfType(object interface{}) []*function {
 //
 // The methods should have return type error.
 func (r *Registry) RegisterService(object interface{}) {
-	methods := getRPCMethodsOfType(object)
-	if len(methods) == 0 {
-		panic(fmt.Sprintf("birpc.RegisterService: type %T has no exported methods of suitable type", object))
+	methods, err := getRPCMethodsOfType(object)
+	if err != nil {
+		// programmer error
+		panic(err)
 	}
 
 	serviceName := reflect.Indirect(reflect.ValueOf(object)).Type().Name()

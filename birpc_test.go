@@ -338,3 +338,36 @@ func TestFillArgsError(t *testing.T) {
 		t.Fatalf("unexpected error from ServeCodec: %v", err)
 	}
 }
+
+func testPanic(t *testing.T, fn func(), want string) {
+	defer func() {
+		val := recover()
+		if val == nil {
+			t.Error("expected a panic")
+			return
+		}
+		err, ok := val.(error)
+		if !ok {
+			t.Errorf("expected an error, got %#v", val)
+			return
+		}
+		if g, e := err.Error(), want; g != e {
+			t.Errorf("wrong error: %q != %q", g, e)
+			return
+		}
+	}()
+	fn()
+}
+
+type TooFewArguments struct{}
+
+func (TooFewArguments) TooFew() {}
+
+func TestRegisterBadTooFewArguments(t *testing.T) {
+	registry := birpc.NewRegistry()
+	testPanic(
+		t,
+		func() { registry.RegisterService(TooFewArguments{}) },
+		"birpc.RegisterService: method birpc_test.TooFewArguments.TooFew is missing request/reply arguments",
+	)
+}
