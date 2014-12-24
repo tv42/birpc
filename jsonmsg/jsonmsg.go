@@ -3,9 +3,10 @@ package jsonmsg
 import (
 	"encoding/json"
 	"errors"
-	"github.com/tv42/birpc"
 	"io"
 	"sync"
+
+	"github.com/tv42/birpc"
 )
 
 type codec struct {

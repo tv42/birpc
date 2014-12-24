@@ -2,11 +2,12 @@ package jsonmsg_test
 
 import (
 	"encoding/json"
-	"github.com/tv42/birpc"
-	"github.com/tv42/birpc/jsonmsg"
 	"io"
 	"net"
 	"testing"
+
+	"github.com/tv42/birpc"
+	"github.com/tv42/birpc/jsonmsg"
 )
 
 type Request struct {
