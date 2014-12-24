@@ -11,6 +11,13 @@ import (
 	"github.com/tv42/birpc/jsonmsg"
 )
 
+// Generic reply parsing
+type LowLevelReply struct {
+	Id     uint64          `json:"id,string"`
+	Result json.RawMessage `json:"result"`
+	Error  *birpc.Error    `json:"error"`
+}
+
 type WordLengthRequest struct {
 	Word string
 }
@@ -168,12 +175,6 @@ func (e *EndpointPeer) Poke(request *nothing, reply *nothing, endpoint *birpc.En
 	return nil
 }
 
-type EndpointPeer_LowLevelReply struct {
-	Id     uint64          `json:"id,string"`
-	Result json.RawMessage `json:"result"`
-	Error  *birpc.Error    `json:"error"`
-}
-
 func TestServerEndpointArg(t *testing.T) {
 	peer := &EndpointPeer{}
 	registry := birpc.NewRegistry()
@@ -190,7 +191,7 @@ func TestServerEndpointArg(t *testing.T) {
 
 	io.WriteString(c, `{"id":"42","fn":"EndpointPeer.Poke","args":{}}`)
 
-	var reply EndpointPeer_LowLevelReply
+	var reply LowLevelReply
 	dec := json.NewDecoder(c)
 	if err := dec.Decode(&reply); err != nil && err != io.EOF {
 		t.Fatalf("decode failed: %s", err)
@@ -217,12 +218,6 @@ func (_ Failing) Fail(request *nothing, reply *nothing) error {
 	return errors.New("intentional")
 }
 
-type LowLevelFailingMsg struct {
-	Id     uint64           `json:"id,string"`
-	Result *json.RawMessage `json:"result"`
-	Error  *birpc.Error     `json:"error"`
-}
-
 func TestServerError(t *testing.T) {
 	c, s := net.Pipe()
 	defer c.Close()
@@ -237,7 +232,7 @@ func TestServerError(t *testing.T) {
 	const REQ = `{"id": "42", "fn": "Failing.Fail", "args": {}}` + "\n"
 	io.WriteString(c, REQ)
 
-	var reply LowLevelFailingMsg
+	var reply LowLevelReply
 	dec := json.NewDecoder(c)
 	if err := dec.Decode(&reply); err != nil && err != io.EOF {
 		t.Fatalf("decode failed: %s", err)
