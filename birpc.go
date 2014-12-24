@@ -51,11 +51,19 @@ func getRPCMethodsOfType(object interface{}) []*function {
 	for i := 0; i < type_.NumMethod(); i++ {
 		method := type_.Method(i)
 
-		if method.PkgPath != "" {
-			// skip unexported method
+		if method.PkgPath != "" ||
+			method.Type.NumIn() < 3 ||
+			method.Type.In(2).Kind() != reflect.Ptr ||
+			method.Type.NumOut() != 1 ||
+			method.Type.Out(0).Name() != "error" {
+			// skip if:
+			// - unexported method;
+			// - method has fewer than two arguments;
+			// - second argument is not a pointer;
+			// - zero or more than one return value; or
+			// - single non-error return value
 			continue
 		}
-		// TODO verify more
 
 		fn := &function{
 			receiver: reflect.ValueOf(object),

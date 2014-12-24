@@ -2,11 +2,12 @@ package birpc_test
 
 import (
 	"encoding/json"
-	"github.com/tv42/birpc"
-	"github.com/tv42/birpc/jsonmsg"
 	"io"
 	"net"
 	"testing"
+
+	"github.com/tv42/birpc"
+	"github.com/tv42/birpc/jsonmsg"
 )
 
 type Request struct {
@@ -29,6 +30,25 @@ func (_ WordLength) Len(request *Request, reply *Reply) error {
 	reply.Length = len(request.Word)
 	return nil
 }
+
+// more than two arguments
+func (_ WordLength) OK(request *Request, reply *Reply, b bool) error { return nil }
+
+// wrong return type
+func (_ WordLength) Ignore1(request *Request, reply *Reply) bool {
+	return false
+}
+
+// wrong number of return values
+func (_ WordLength) Ignore2(request *Request, reply *Reply) (error, bool) {
+	return nil, false
+}
+
+// fewer than two arguments
+func (_ WordLength) Ignore3(int) error { return nil }
+
+// non-pointer for second argument
+func (_ WordLength) Ignore4(int, string) error { return nil }
 
 // this is here only to trigger a bug where all methods are thought to
 // be rpc methods
@@ -102,6 +122,9 @@ func TestClient(t *testing.T) {
 	if reply.Length != 5 {
 		t.Fatalf("got wrong answer: %v", reply.Length)
 	}
+
+	// would panic if method was not ignored
+	client.Call("WordLength.Ignore1", args, reply)
 
 	c.Close()
 
