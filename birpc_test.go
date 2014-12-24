@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"reflect"
 	"testing"
 
 	"github.com/tv42/birpc"
@@ -269,6 +270,53 @@ func TestUnmarshalArgsError(t *testing.T) {
 
 	const REQ = `{"id": "42", "fn": "WordLength.Len", "args": "evil"}` + "\n"
 	io.WriteString(c, REQ)
+
+	var reply LowLevelReply
+	dec := json.NewDecoder(c)
+	if err := dec.Decode(&reply); err != nil && err != io.EOF {
+		t.Fatalf("decode failed: %s", err)
+	}
+	t.Logf("reply msg: %#v", reply)
+	if reply.Error == nil {
+		t.Fatalf("expected an error")
+	}
+	if reply.Result != nil {
+		t.Fatalf("got unexpected result: %v", reply.Result)
+	}
+
+	c.Close()
+
+	err := <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from ServeCodec: %v", err)
+	}
+}
+
+type BadFillArgsCodec struct {
+	birpc.Codec
+}
+
+var _ birpc.FillArgser = BadFillArgsCodec{}
+
+func (BadFillArgsCodec) FillArgs([]reflect.Value) error {
+	return errors.New("intentional")
+}
+
+func TestFillArgsError(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := birpc.NewRegistry()
+	// just need anything with >2 parameters
+	registry.RegisterService(&EndpointPeer{})
+	jsonCodec := jsonmsg.NewCodec(s)
+	codec := BadFillArgsCodec{jsonCodec}
+	server := birpc.NewEndpoint(codec, registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	io.WriteString(c, `{"id":"42","fn":"EndpointPeer.Poke","args":{}}`)
 
 	var reply LowLevelReply
 	dec := json.NewDecoder(c)
