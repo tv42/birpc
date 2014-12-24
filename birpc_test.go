@@ -255,3 +255,38 @@ func TestServerError(t *testing.T) {
 		t.Fatalf("unexpected error from ServeCodec: %v", err)
 	}
 }
+
+func TestUnmarshalArgsError(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := birpc.NewRegistry()
+	registry.RegisterService(WordLength{})
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	const REQ = `{"id": "42", "fn": "WordLength.Len", "args": "evil"}` + "\n"
+	io.WriteString(c, REQ)
+
+	var reply LowLevelReply
+	dec := json.NewDecoder(c)
+	if err := dec.Decode(&reply); err != nil && err != io.EOF {
+		t.Fatalf("decode failed: %s", err)
+	}
+	t.Logf("reply msg: %#v", reply)
+	if reply.Error == nil {
+		t.Fatalf("expected an error")
+	}
+	if reply.Result != nil {
+		t.Fatalf("got unexpected result: %v", reply.Result)
+	}
+
+	c.Close()
+
+	err := <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from ServeCodec: %v", err)
+	}
+}

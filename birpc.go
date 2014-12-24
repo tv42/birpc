@@ -277,6 +277,7 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 			e.codec.Close()
 			return
 		}
+		return
 	}
 	reply := reflect.New(fn.reply)
 
