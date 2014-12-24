@@ -371,3 +371,16 @@ func TestRegisterBadTooFewArguments(t *testing.T) {
 		"birpc.RegisterService: method birpc_test.TooFewArguments.TooFew is missing request/reply arguments",
 	)
 }
+
+type NonPointerReply struct{}
+
+func (NonPointerReply) NonPointer(args struct{}, reply struct{}) {}
+
+func TestRegisterBadNonPointerReply(t *testing.T) {
+	registry := birpc.NewRegistry()
+	testPanic(
+		t,
+		func() { registry.RegisterService(NonPointerReply{}) },
+		"birpc.RegisterService: method birpc_test.NonPointerReply.NonPointer reply argument must be a pointer type",
+	)
+}

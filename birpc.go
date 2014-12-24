@@ -58,6 +58,9 @@ func getRPCMethodsOfType(object interface{}) ([]*function, error) {
 		if method.Type.NumIn() < 3 {
 			return nil, fmt.Errorf("birpc.RegisterService: method %T.%s is missing request/reply arguments", object, method.Name)
 		}
+		if method.Type.In(2).Kind() != reflect.Ptr {
+			return nil, fmt.Errorf("birpc.RegisterService: method %T.%s reply argument must be a pointer type", object, method.Name)
+		}
 		// TODO verify more
 
 		fn := &function{
