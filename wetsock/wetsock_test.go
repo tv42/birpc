@@ -2,23 +2,39 @@ package wetsock_test
 
 import (
 	"fmt"
-	"github.com/tv42/birpc"
-	"github.com/tv42/birpc/oneshotlisten"
-	"github.com/tv42/birpc/wetsock"
-	"golang.org/x/net/websocket"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"testing"
+
+	"github.com/gorilla/websocket"
+	"github.com/tv42/birpc"
+	"github.com/tv42/birpc/oneshotlisten"
+	"github.com/tv42/birpc/wetsock"
 )
+
+func MustParseURL(u string) *url.URL {
+	uu, err := url.Parse(u)
+	if err != nil {
+		panic(err)
+	}
+	return uu
+}
 
 type Message struct {
 	Greeting string
 }
 
-func hello(ws *websocket.Conn) {
+func hello(w http.ResponseWriter, req *http.Request) {
 	log.Printf("HELLO")
+	upgrader := websocket.Upgrader{}
+	ws, err := upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 	codec := wetsock.NewCodec(ws)
 
 	msg := birpc.Message{
@@ -26,8 +42,7 @@ func hello(ws *websocket.Conn) {
 		Func: "Greeting.Greet",
 		Args: struct{ Msg string }{"Hello, world"},
 	}
-	err := codec.WriteMessage(&msg)
-	if err != nil {
+	if err := codec.WriteMessage(&msg); err != nil {
 		panic(fmt.Sprintf("wetsock send failed: %v", err))
 	}
 	codec.Close()
@@ -41,7 +56,7 @@ func TestSend(t *testing.T) {
 	pipe_client, pipe_server := net.Pipe()
 
 	server := http.Server{
-		Handler: websocket.Handler(hello),
+		Handler: http.HandlerFunc(hello),
 	}
 
 	fakeListener := oneshotlisten.New(pipe_server)
@@ -51,16 +66,20 @@ func TestSend(t *testing.T) {
 		done <- server.Serve(fakeListener)
 	}()
 
-	conf, err := websocket.NewConfig("http://fakeserver.test/bloop", "http://fakeserver.test/blarg")
-	if err != nil {
-		t.Fatalf("websocket client config failed: %v", err)
-	}
-	ws, err := websocket.NewClient(conf, pipe_client)
+	ws, _, err := websocket.NewClient(
+		pipe_client,
+		MustParseURL("http://fakeserver.test/bloop"),
+		http.Header{
+			"Origin": {"http://fakeserver.test/blarg"},
+		},
+		4096,
+		4096,
+	)
 	if err != nil {
 		t.Fatalf("websocket client failed to start: %v", err)
 	}
 	var msg birpc.Message
-	err = websocket.JSON.Receive(ws, &msg)
+	err = ws.ReadJSON(&msg)
 	if err != nil {
 		t.Fatalf("websocket client receive error: %v", err)
 	}
@@ -103,7 +122,7 @@ type Address struct {
 type Peer struct{}
 
 func (_ Peer) Address(request *nothing, reply *Address, ws *websocket.Conn) error {
-	reply.Address = ws.Request().RemoteAddr
+	reply.Address = ws.RemoteAddr().String()
 	return nil
 }
 
@@ -113,15 +132,20 @@ func TestWSArg(t *testing.T) {
 
 	pipe_client, pipe_server := net.Pipe()
 
-	serve := func(ws *websocket.Conn) {
-		endpoint := wetsock.NewEndpoint(registry, ws)
-		err := endpoint.Serve()
+	serve := func(w http.ResponseWriter, req *http.Request) {
+		upgrader := websocket.Upgrader{}
+		ws, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
-			log.Printf("websocket error from %v: %v", ws.Request().RemoteAddr, err)
+			log.Println(err)
+			return
+		}
+		endpoint := wetsock.NewEndpoint(registry, ws)
+		if err := endpoint.Serve(); err != nil {
+			log.Printf("websocket error from %v: %v", ws.RemoteAddr(), err)
 		}
 	}
 	server := http.Server{
-		Handler: websocket.Handler(serve),
+		Handler: http.HandlerFunc(serve),
 	}
 
 	fakeListener := oneshotlisten.New(pipe_server)
@@ -131,26 +155,27 @@ func TestWSArg(t *testing.T) {
 		done <- server.Serve(fakeListener)
 	}()
 
-	conf, err := websocket.NewConfig("http://fakeserver.test/bloop", "http://fakeserver.test/blarg")
-	if err != nil {
-		t.Fatalf("websocket client config failed: %v", err)
-	}
-	ws, err := websocket.NewClient(conf, pipe_client)
-	if err != nil {
-		t.Fatalf("websocket client failed to start: %v", err)
-	}
+	ws, _, err := websocket.NewClient(
+		pipe_client,
+		MustParseURL("http://fakeserver.test/bloop"),
+		http.Header{
+			"Origin": {"http://fakeserver.test/blarg"},
+		},
+		4096,
+		4096,
+	)
 	request := birpc.Message{
 		ID:   13,
 		Func: "Peer.Address",
 		Args: nothing{},
 	}
-	err = websocket.JSON.Send(ws, &request)
+	err = ws.WriteJSON(&request)
 	if err != nil {
 		t.Fatalf("websocket send failed: %v", err)
 	}
 
 	var msg birpc.Message
-	err = websocket.JSON.Receive(ws, &msg)
+	err = ws.ReadJSON(&msg)
 	if err != nil {
 		t.Fatalf("websocket client receive error: %v", err)
 	}
@@ -229,10 +254,15 @@ func TestServerNoArgs(t *testing.T) {
 	registry := birpc.NewRegistry()
 	registry.RegisterService(WordLength{})
 
-	wordlen := func(ws *websocket.Conn) {
+	wordlen := func(w http.ResponseWriter, req *http.Request) {
+		upgrader := websocket.Upgrader{}
+		ws, err := upgrader.Upgrade(w, req, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 		endpoint := wetsock.NewEndpoint(registry, ws)
-		err := endpoint.Serve()
-		if err != nil && err != io.EOF {
+		if err := endpoint.Serve(); err != nil && err != io.EOF {
 			t.Fatalf("birpc Serve failed: %v", err)
 		}
 	}
@@ -240,7 +270,7 @@ func TestServerNoArgs(t *testing.T) {
 	pipe_client, pipe_server := net.Pipe()
 
 	server := http.Server{
-		Handler: websocket.Handler(wordlen),
+		Handler: http.HandlerFunc(wordlen),
 	}
 
 	fakeListener := oneshotlisten.New(pipe_server)
@@ -250,11 +280,15 @@ func TestServerNoArgs(t *testing.T) {
 		done <- server.Serve(fakeListener)
 	}()
 
-	conf, err := websocket.NewConfig("http://fakeserver.test/bloop", "http://fakeserver.test/blarg")
-	if err != nil {
-		t.Fatalf("websocket client config failed: %v", err)
-	}
-	ws, err := websocket.NewClient(conf, pipe_client)
+	ws, _, err := websocket.NewClient(
+		pipe_client,
+		MustParseURL("http://fakeserver.test/bloop"),
+		http.Header{
+			"Origin": {"http://fakeserver.test/blarg"},
+		},
+		4096,
+		4096,
+	)
 	if err != nil {
 		t.Fatalf("websocket client failed to start: %v", err)
 	}
@@ -263,13 +297,13 @@ func TestServerNoArgs(t *testing.T) {
 		ID:   42,
 		Func: "WordLength.Len",
 	}
-	err = websocket.JSON.Send(ws, req)
+	err = ws.WriteJSON(req)
 	if err != nil {
 		t.Fatalf("websocket client send error: %v", err)
 	}
 
 	var msg birpc.Message
-	err = websocket.JSON.Receive(ws, &msg)
+	err = ws.ReadJSON(&msg)
 	if err != nil {
 		t.Fatalf("websocket client receive error: %v", err)
 	}

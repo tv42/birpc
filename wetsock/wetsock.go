@@ -3,9 +3,10 @@ package wetsock
 import (
 	"encoding/json"
 	"errors"
-	"github.com/tv42/birpc"
-	"golang.org/x/net/websocket"
 	"reflect"
+
+	"github.com/gorilla/websocket"
+	"github.com/tv42/birpc"
 )
 
 type codec struct {
@@ -27,7 +28,7 @@ type jsonMessage struct {
 
 func (c *codec) ReadMessage(msg *birpc.Message) error {
 	var jm jsonMessage
-	err := websocket.JSON.Receive(c.WS, &jm)
+	err := c.WS.ReadJSON(&jm)
 	if err != nil {
 		return err
 	}
@@ -40,7 +41,7 @@ func (c *codec) ReadMessage(msg *birpc.Message) error {
 }
 
 func (c *codec) WriteMessage(msg *birpc.Message) error {
-	return websocket.JSON.Send(c.WS, msg)
+	return c.WS.WriteJSON(msg)
 }
 
 func (c *codec) Close() error {

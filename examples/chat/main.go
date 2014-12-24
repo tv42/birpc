@@ -3,10 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/tv42/birpc"
-	"github.com/tv42/birpc/wetsock"
-	"github.com/tv42/topic"
-	"golang.org/x/net/websocket"
 	"html/template"
 	"log"
 	"net"
@@ -14,6 +10,11 @@ import (
 	"os"
 	"path"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/tv42/birpc"
+	"github.com/tv42/birpc/wetsock"
+	"github.com/tv42/topic"
 )
 
 var (
@@ -76,7 +77,7 @@ func isErrClosing(err error) bool {
 type nothing struct{}
 
 func (c *Chat) Message(msg *Incoming, _ *nothing, ws *websocket.Conn) error {
-	log.Printf("recv from %v:%#v\n", ws.Request().RemoteAddr, msg)
+	log.Printf("recv from %v:%#v\n", ws.RemoteAddr(), msg)
 
 	c.broadcast.Broadcast <- Outgoing{
 		Time:    time.Now(),
@@ -106,8 +107,14 @@ func main() {
 	chat.registry = birpc.NewRegistry()
 	chat.registry.RegisterService(&chat)
 	defer close(chat.broadcast.Broadcast)
+	upgrader := websocket.Upgrader{}
 
-	serve := func(ws *websocket.Conn) {
+	serve := func(w http.ResponseWriter, req *http.Request) {
+		ws, err := upgrader.Upgrade(w, req, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 		endpoint := wetsock.NewEndpoint(chat.registry, ws)
 		messages := make(chan interface{}, 10)
 		chat.broadcast.Register(messages)
@@ -122,17 +129,16 @@ func main() {
 			// broadcast topic kicked us out for being too slow;
 			// probably a hung TCP connection. let client
 			// re-establish.
-			log.Printf("Kicking slow client: %v", ws.Request().RemoteAddr)
+			log.Printf("Kicking slow client: %v", ws.RemoteAddr())
 			ws.Close()
 		}()
 
-		err := endpoint.Serve()
-		if err != nil {
-			log.Printf("websocket error from %v: %v", ws.Request().RemoteAddr, err)
+		if err := endpoint.Serve(); err != nil {
+			log.Printf("websocket error from %v: %v", ws.RemoteAddr(), err)
 		}
 	}
 
-	http.Handle("/sock", websocket.Handler(serve))
+	http.HandleFunc("/sock", serve)
 	http.Handle("/", http.HandlerFunc(index))
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	err := http.ListenAndServe(addr, nil)
