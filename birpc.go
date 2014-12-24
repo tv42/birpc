@@ -253,14 +253,13 @@ func (e *Endpoint) send(msg *Message) error {
 	return e.codec.WriteMessage(msg)
 }
 
-func (e *Endpoint) fillArgs(arglist []reflect.Value) error {
+func (e *Endpoint) fillArgs(arglist []reflect.Value) {
 	for i := 0; i < len(arglist); i++ {
 		switch arglist[i].Interface().(type) {
 		case *Endpoint:
 			arglist[i] = reflect.ValueOf(e)
 		}
 	}
-	return nil
 }
 
 func (e *Endpoint) call(fn *function, msg *Message) {
@@ -293,19 +292,7 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 			arglist[i] = reflect.Zero(fn.method.Type.In(i))
 		}
 		// first fill what we can
-		err = e.fillArgs(arglist[3:])
-		if err != nil {
-			msg.Error = &Error{Msg: err.Error()}
-			msg.Func = ""
-			msg.Args = nil
-			msg.Result = nil
-			err = e.send(msg)
-			if err != nil {
-				// well, we can't report the problem to the client...
-				e.codec.Close()
-				return
-			}
-		}
+		e.fillArgs(arglist[3:])
 
 		// then codec fills what it can
 		if filler, ok := e.codec.(FillArgser); ok {
