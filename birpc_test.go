@@ -384,3 +384,42 @@ func TestRegisterBadNonPointerReply(t *testing.T) {
 		"birpc.RegisterService: method birpc_test.NonPointerReply.NonPointer reply argument must be a pointer type",
 	)
 }
+
+type NoReturn struct{}
+
+func (NoReturn) NoReturn(args *struct{}, reply *struct{}) {}
+
+func TestRegisterBadNoReturn(t *testing.T) {
+	registry := birpc.NewRegistry()
+	testPanic(
+		t,
+		func() { registry.RegisterService(NoReturn{}) },
+		"birpc.RegisterService: method birpc_test.NoReturn.NoReturn must return error",
+	)
+}
+
+type NonErrorReturn struct{}
+
+func (NonErrorReturn) NonErrorReturn(args *struct{}, reply *struct{}) int { return 42 }
+
+func TestRegisterBadNonErrorReturn(t *testing.T) {
+	registry := birpc.NewRegistry()
+	testPanic(
+		t,
+		func() { registry.RegisterService(NonErrorReturn{}) },
+		"birpc.RegisterService: method birpc_test.NonErrorReturn.NonErrorReturn must return error",
+	)
+}
+
+type MultiReturn struct{}
+
+func (MultiReturn) MultiReturn(args *struct{}, reply *struct{}) (int, error) { return 42, nil }
+
+func TestRegisterBadMultiReturn(t *testing.T) {
+	registry := birpc.NewRegistry()
+	testPanic(
+		t,
+		func() { registry.RegisterService(MultiReturn{}) },
+		"birpc.RegisterService: method birpc_test.MultiReturn.MultiReturn must return error",
+	)
+}
