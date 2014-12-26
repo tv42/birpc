@@ -69,7 +69,7 @@ func getRPCMethodsOfType(object interface{}) ([]*function, error) {
 		fn := &function{
 			receiver: reflect.ValueOf(object),
 			method:   method,
-			args:     method.Type.In(1).Elem(),
+			args:     method.Type.In(1),
 			reply:    method.Type.In(2).Elem(),
 		}
 		fns = append(fns, fn)
@@ -276,7 +276,13 @@ func (e *Endpoint) fillArgs(arglist []reflect.Value) {
 }
 
 func (e *Endpoint) call(fn *function, msg *Message) {
-	args := reflect.New(fn.args)
+	var args reflect.Value
+	if fn.args.Kind() == reflect.Ptr {
+		args = reflect.New(fn.args.Elem())
+	} else {
+		args = reflect.New(fn.args)
+	}
+
 	err := e.codec.UnmarshalArgs(msg, args.Interface())
 	if err != nil {
 		msg.Error = &Error{Msg: err.Error()}
@@ -291,6 +297,10 @@ func (e *Endpoint) call(fn *function, msg *Message) {
 		}
 		return
 	}
+	if fn.args.Kind() != reflect.Ptr {
+		args = args.Elem()
+	}
+
 	reply := reflect.New(fn.reply)
 
 	num_args := fn.method.Type.NumIn()

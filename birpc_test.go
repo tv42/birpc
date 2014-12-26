@@ -423,3 +423,44 @@ func TestRegisterBadMultiReturn(t *testing.T) {
 		"birpc.RegisterService: method birpc_test.MultiReturn.MultiReturn must return error",
 	)
 }
+
+type NonPointerRequest struct{}
+
+func (NonPointerRequest) NonPointer(args int, reply *int) error {
+	*reply = args
+	return nil
+}
+
+func TestNonPointerRequest(t *testing.T) {
+	c, s := net.Pipe()
+	defer c.Close()
+	registry := birpc.NewRegistry()
+	registry.RegisterService(NonPointerRequest{})
+	server := birpc.NewEndpoint(jsonmsg.NewCodec(s), registry)
+	server_err := make(chan error)
+	go func() {
+		server_err <- server.Serve()
+	}()
+
+	io.WriteString(c, `{"id": "42", "fn": "NonPointerRequest.NonPointer", "args": 13}`+"\n")
+
+	var reply LowLevelReply
+	dec := json.NewDecoder(c)
+	if err := dec.Decode(&reply); err != nil && err != io.EOF {
+		t.Fatalf("decode failed: %s", err)
+	}
+	t.Logf("reply msg: %#v", reply)
+	if reply.Error != nil {
+		t.Fatalf("unexpected error response: %v", reply.Error)
+	}
+	if string(reply.Result) != `13` {
+		t.Fatalf("got wrong answer: %v", reply.Result)
+	}
+
+	c.Close()
+
+	err := <-server_err
+	if err != io.EOF {
+		t.Fatalf("unexpected error from ServeCodec: %v", err)
+	}
+}
