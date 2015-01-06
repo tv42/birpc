@@ -19,8 +19,8 @@
 // some of the types that will be filled:
 //
 //   - *birpc.Endpoint: the Endpoint this method call was received on
-//   - *websocket.Conn (as in go.net/websocket): the WebSocket this
-//     method call was received on (when using wetsock)
+//   - *websocket.Conn (as in github.com/gorilla/websocket): the
+//     WebSocket this method call was received on (when using wetsock)
 //
 // The types Error, Message and FillArgser are only needed if you're
 // implementing a new Codec.
