@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path"
@@ -58,20 +57,6 @@ func index(w http.ResponseWriter, req *http.Request) {
 type Chat struct {
 	broadcast *topic.Topic
 	registry  *birpc.Registry
-}
-
-// Closing the socket from another goroutine causes a concurrent
-// blocking read to return a net.errClosing error. It's pointless to
-// spam logs with it. The error is not exported, so checking for it is
-// ugly.
-//
-// Background: https://code.google.com/p/go/issues/detail?id=4373
-func isErrClosing(err error) bool {
-	switch err2 := err.(type) {
-	case *net.OpError:
-		err = err2.Err
-	}
-	return err.Error() == "use of closed network connection"
 }
 
 type nothing struct{}
