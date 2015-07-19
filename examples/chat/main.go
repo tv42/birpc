@@ -24,9 +24,9 @@ var (
 var html *template.Template = template.New("main")
 
 func init() {
-	template.Must(html.New("chat.html").Parse(string(chat_html)))
-	template.Must(html.New("chat.css").Parse(string(chat_css)))
-	template.Must(html.New("chat.js").Parse(string(chat_js)))
+	template.Must(html.ParseFiles("chat.html"))
+	template.Must(html.ParseFiles("chat.css"))
+	template.Must(html.ParseFiles("chat.js"))
 }
 
 func Usage() {
