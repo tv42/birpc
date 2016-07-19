@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/tv42/birpc"
@@ -11,6 +12,10 @@ import (
 
 type codec struct {
 	WS *websocket.Conn
+	// https://godoc.org/github.com/gorilla/websocket#hdr-Concurrency
+	// As above document.Only one concurrent reader and one concurrent writer are allowed.
+	readMu sync.Mutex
+	writeMu sync.Mutex
 }
 
 // This is ugly, but i need to override the unmarshaling logic for
@@ -27,6 +32,9 @@ type jsonMessage struct {
 }
 
 func (c *codec) ReadMessage(msg *birpc.Message) error {
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
+
 	var jm jsonMessage
 	err := c.WS.ReadJSON(&jm)
 	if err != nil {
@@ -41,6 +49,9 @@ func (c *codec) ReadMessage(msg *birpc.Message) error {
 }
 
 func (c *codec) WriteMessage(msg *birpc.Message) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	return c.WS.WriteJSON(msg)
 }
 
